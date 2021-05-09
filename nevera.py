@@ -36,6 +36,21 @@ def get_last():
     except (Exception, psycopg2.Error) as error:
         print("Error while clearing", error)
 
+def get_last_ice():
+    try:
+        connection = con.get_connection()
+        cursor = connection.cursor()
+        query = """SELECT minute FROM nevera_ice ORDER BY ID DESC LIMIT 1;"""
+        cursor.execute(query)
+        minuto = cursor.fetchone()
+        elmin = 0
+        con.close_connection(connection)
+        print("MINUTO ", minuto[0])
+        return minuto[0]
+
+    except (Exception, psycopg2.Error) as error:
+        print("Error while clearing", error)
+
 
 #funcion que anota todo en la db
 def insert(value):
@@ -48,6 +63,22 @@ def insert(value):
         cursor.execute(insert_query, (value, last_minute+5,))
         connection.commit()
         cursor.execute("SELECT * FROM nevera_temp ORDER BY ID DESC LIMIT 1")
+        res = cursor.fetchone()
+        print('se inserto: ', res)
+        con.close_connection(connection)
+    except (Exception, psycopg2.Error) as error:
+        print("Error while getting data", error)
+
+def insert_ice(value):
+    last_minute = get_last_ice()
+    try:
+        connection = con.get_connection()
+        cursor = connection.cursor()
+        insert_query = """INSERT INTO nevera_ice (ice, minute) 
+                        VALUES (%s, %s)"""
+        cursor.execute(insert_query, (value, last_minute+10,))
+        connection.commit()
+        cursor.execute("SELECT * FROM nevera_ice ORDER BY ID DESC LIMIT 1")
         res = cursor.fetchone()
         print('se inserto: ', res)
         con.close_connection(connection)
@@ -94,17 +125,38 @@ def publish(client, temp):
         insert(now_temp)
     else:
         print(f"Failed to send message to topic {topic}")
+
+def publish_ice(client, ice):
+    ice = str(ice)
+    msg_count = 0
+    msg = "{ice: " + ice + "}"
+    result = client.publish(topic, msg)
+    # result: [0, 1]
+    status = result[0]
+    if status == 0:
+        print(f"Send `{msg}` to topic `{topic}`")
+        insert_ice(ice)
+    else:
+        print(f"Failed to send message to topic {topic}")
              
 
 #ahora la corrida [EL MAIN]
 
 def run():
     client = connect_mqtt()
+    count = 0
     while True:
+        count += 1
         time = Timer(0.5, client.loop())
         temperature = np.random.normal(10, 2, None)
         str_temperature = str(temperature)
         publish(client, str_temperature)
+
+        if(count == 2):
+            count = 0
+            ice = np.random.uniform(0, 10, None)
+            client.loop()
+            publish_ice(client, ice)
     #client.loop_start()
     #publish(client)
 

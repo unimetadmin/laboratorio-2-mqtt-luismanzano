@@ -6,12 +6,12 @@ import connection as con #ARCHIVO QUE NOS CONECTA CON ELEPHANT
 import psycopg2
 from threading import Timer
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 
 broker = "127.0.0.1"
 port = 1883
-topic = "casa/sala/alexa_echo"
+topic = "casa/bano/nivel_tanque"
 client_id = f'python-mqtt-{random.randint(0, 1000)}'
 
 #funcion que anota todo en la db
@@ -20,11 +20,11 @@ def insert(value):
         time = datetime.now()
         connection = con.get_connection()
         cursor = connection.cursor()
-        insert_query = """INSERT INTO alexa (weather, time) 
+        insert_query = """INSERT INTO tank (water, time) 
                         VALUES (%s, %s)"""
-        cursor.execute(insert_query, (value, time,))
+        cursor.execute(insert_query, (value, time + timedelta(minutes=10),))
         connection.commit()
-        cursor.execute("SELECT * FROM alexa ORDER BY ID DESC LIMIT 1")
+        cursor.execute("SELECT * FROM tank ORDER BY ID DESC LIMIT 1")
         res = cursor.fetchone()
         print('se inserto: ', res)
         con.close_connection(connection)
@@ -46,7 +46,7 @@ def connect_mqtt():
 
 #publicando mensajes
 def publish(client, data):
-    msg = "{caracas_weather: " + data + "}"
+    msg = "{water: " + data + "}"
     result = client.publish(topic, msg)
     # result: [0, 1]
     status = result[0]
@@ -55,20 +55,55 @@ def publish(client, data):
         insert(data)
     else:
         print(f"Failed to send message to topic {topic}")
-             
+
+
+def publish_half(client, data):
+    msg = "{message: " + "Ya el tanque va por la mitad" + "}"
+    result = client.publish(topic, msg)
+    # result: [0, 1]
+    status = result[0]
+    if status == 0:
+        print(f"Send `{msg}` to topic `{topic}`")
+    else:
+        print(f"Failed to send message to topic {topic}")
+
+def publish_no_water(client, data):
+    msg = "{message: " + "Ya el tanque va por la mitad" + "}"
+    result = client.publish(topic, msg)
+    # result: [0, 1]
+    status = result[0]
+    if status == 0:
+        print(f"Send `{msg}` to topic `{topic}`")
+    else:
+        print(f"Failed to send message to topic {topic}")
 
 #ahora la corrida [EL MAIN]
 
 def run():
     client = connect_mqtt()
+    water_capacity = 100
+    water = 100
     count = 0
     while True:
-        res = requests.get("http://api.openweathermap.org/data/2.5/weather?q=Caracas&appid=5e9b140cd7d802dd03bb13e1b37332bd")
-        data = res.json()["main"]["temp"]
-       # data = json.load(parse)
-        print('parse', data)
-        time = Timer(5, client.loop())
-        publish(client, str(data))
+        count +=1
+        time = Timer(0.1, client.loop())
+        minus_water = np.random.normal(water*0.10, water*0.05)
+        water = water - minus_water
+        
+        publish(client, str(water))
+        
+        if(count == 3):
+            count = 0
+            plus_water = np.random.normal(water_capacity*0.20, water*0.05)
+            water = water + plus_water
+            client.loop()
+            publish(client, str(water))
+        
+        if( water < (water_capacity/2)):
+            publish_half(client)
+        elif(water == 0):
+            publish_no_water(client)
+        
 
 if __name__ == '__main__':
     #clear()
